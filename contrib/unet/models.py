@@ -1,7 +1,6 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
-import numpy as np
 
 import pandas as pd
 from pathlib import Path
@@ -14,13 +13,10 @@ class Unet(pl.LightningModule):
         channel_dims,
         rec_weight,
         opt_fn,
-        rec_weight_fn=None,
         norm_stats=None,
         test_metrics=None,
         pre_metric_fn=None,
         persist_rw=True,
-        output_leadtime_start=None,
-        output_only_forecast=True,
         batch_selector=None,
     ):
         super().__init__()
@@ -32,10 +28,6 @@ class Unet(pl.LightningModule):
         self.opt_fn = opt_fn
         self.metrics = test_metrics or {}
         self.pre_metric_fn = pre_metric_fn or (lambda x: x)
-
-        self.rec_weight_fn = rec_weight_fn
-        self.output_leadtime_start = output_leadtime_start
-        self.output_only_forecast = output_only_forecast
 
         self.max_depth = len(channel_dims) // 3
         self.solver = solver(channel_dims=channel_dims, max_depth=self.max_depth)
@@ -60,26 +52,13 @@ class Unet(pl.LightningModule):
         loss = F.mse_loss(err_w[err_num], torch.zeros_like(err_w[err_num]))
         return loss
 
-    @staticmethod
-    def mask_batch(batch):
-        # temporal masking
-        new_input = batch.input
-        dims = new_input.size()
-        new_input[:, dims[1] // 2 :, :, :] = np.nan
-
-        mask_batch = batch._replace(input=new_input)
-
-        return mask_batch
-
     def forward(self, batch):
         return self.solver(batch)
 
     def training_step(self, batch, batch_idx):
-        batch = self.mask_batch(batch)
         return self.step(batch, "train")[0]
 
     def validation_step(self, batch, batch_idx):
-        batch = self.mask_batch(batch)
         return self.step(batch, "val")[0]
 
     def step(self, batch, phase=""):
@@ -113,11 +92,9 @@ class Unet(pl.LightningModule):
         torch.cuda.empty_cache()
 
     def test_step(self, batch, batch_idx):
-        mask_batch = self.mask_batch(batch)
-
         if batch_idx == 0:
             self.test_data = []
-        out = self(batch=mask_batch.input)
+        out = self(batch=batch.input)
         m, s = self.norm_stats
 
         self.test_data.append(
@@ -133,46 +110,28 @@ class Unet(pl.LightningModule):
         return self.rec_weight.size()[0]
 
     def on_test_epoch_end(self):
-        self.clear_gpu_mem()
-        self.test_data = torch.cat(self.test_data).cuda()
+        rec_da = self.trainer.test_dataloaders.dataset.reconstruct(
+            self.test_data, self.rec_weight.cpu().numpy()
+        )
 
-        dims = self.rec_weight.size()
-        dT = self.get_dT()
-        metrics = []
-        output_start = 0 if self.output_only_forecast else -((dT - 1) // 2)
-        if self.output_leadtime_start is not None:
-            output_start = self.output_leadtime_start
-        for i in range(output_start, 7):
-            forecast_weight = self.rec_weight_fn(
-                i, dT, dims, self.rec_weight.cpu().numpy()
-            )
-            rec_da = self.trainer.test_dataloaders.dataset.reconstruct(
-                self.test_data, forecast_weight
-            )
+        if isinstance(rec_da, list):
+            rec_da = rec_da[0]
 
-            if isinstance(rec_da, list):
-                rec_da = rec_da[0]
+        self.test_data = rec_da.assign_coords(
+            dict(v0=self.test_quantities)
+        ).to_dataset(dim='v0')
 
-            test_data_leadtime = rec_da.assign_coords(
-                dict(v0=self.test_quantities)
-            ).to_dataset(dim="v0")
+        metric_data = self.test_data.pipe(self.pre_metric_fn)
+        metrics = pd.Series({
+            metric_n: metric_fn(metric_data)
+            for metric_n, metric_fn in self.metrics.items()
+        })
 
-            if self.logger:
-                test_data_leadtime.to_netcdf(
-                    Path(self.logger.log_dir) / f"test_data_{i + (dT - 1) // 2}.nc"
-                )
-                print(Path(self.trainer.log_dir) / f"test_data_{i + (dT - 1) // 2}.nc")
-
-            metric_data = test_data_leadtime.pipe(self.pre_metric_fn)
-            metrics_leadtime = pd.Series(
-                {
-                    metric_n: metric_fn(metric_data)
-                    for metric_n, metric_fn in self.metrics.items()
-                }
-            )
-            metrics.append(metrics_leadtime)
-
-        print(pd.DataFrame(metrics, range(output_start, 7)).T.to_markdown())
+        print(metrics.to_frame(name="Metrics").to_markdown())
+        if self.logger:
+            self.test_data.to_netcdf(Path(self.logger.log_dir) / 'test_data.nc')
+            print(Path(self.trainer.log_dir) / 'test_data.nc')
+            self.logger.log_metrics(metrics.to_dict())
 
 
 class UnetSolver(torch.nn.Module):
