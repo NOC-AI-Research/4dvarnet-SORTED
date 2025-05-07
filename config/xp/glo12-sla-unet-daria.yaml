@@ -9,7 +9,7 @@ hydra:
 
 domain: ???
 ckpt: null
-xpname: glo12-sla-unet
+xpname: glo12-sla-unet-daria
 
 trainer:
   _target_: pytorch_lightning.Trainer
@@ -72,13 +72,17 @@ datamodule:
     - 0.08604745118775728
 
 model:
-  _target_: contrib.unet.models.Unet
+  _target_: contrib.unet.models.UnetDaria
   solver:
-    _target_: contrib.unet.models.UnetSolver
+    _target_: contrib.unet.models.UnetSolverDaria
     _partial_: True
-    dim_in: ${datamodule.xrds_kw.train.patch_dims.time}
-  #channel_dims: [32, 32, 32, 64, 64, 64, 128, 128, 128, 256, 256, 256, 512]
-  channel_dims: [64, 64, 64, 128, 128, 128, 256, 256, 256, 512]
+    n_channels: 15
+    n_classes: 15
+    bilinear: True
+    block:
+      _target_: contrib.unet.parts.StandardBlock
+      _partial_: True
+    add_input: False
   opt_fn:
     _target_: contrib.unet.utils.cosanneal_lr_adam
     _partial_: true
@@ -93,7 +97,7 @@ model:
         _partial_: True
         time: {_target_: builtins.slice, _args_: ["2019-11-25", "2019-12-31"]}
         lat: ${domain.test.lat}
-        lon: ${domain.test.lon}
+        ltorch.nan_to_num(x)on: ${domain.test.lon}
   norm_stats: ${datamodule.norm_stats}
 
 entrypoints:

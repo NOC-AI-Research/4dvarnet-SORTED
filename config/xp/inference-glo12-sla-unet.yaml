@@ -1,16 +1,28 @@
-# @package _global_
-
-hydra:
-  run:
-    dir: outputs/${now:%Y-%m-%d}/${xpname}-${now:%H-%M-%S}
-  callbacks:
-    LogJobReturnCallback:
-      _target_: hydra.experimental.callbacks.LogJobReturnCallback
-
-domain: ???
+domain:
+  train:
+    lat:
+      _target_: builtins.slice
+      _args_:
+      - -80
+      - 90
+    lon:
+      _target_: builtins.slice
+      _args_:
+      - -180
+      - 180
+  test:
+    lat:
+      _target_: builtins.slice
+      _args_:
+      - -79
+      - 89
+    lon:
+      _target_: builtins.slice
+      _args_:
+      - -179
+      - 179
 ckpt: null
-xpname: glo12-sla-unet
-
+xpname: glo12-sla-2080
 trainer:
   _target_: pytorch_lightning.Trainer
   inference_mode: false
@@ -24,16 +36,14 @@ trainer:
     name: ${hydra:runtime.choices.xp}
     version: ''
   max_epochs: 1000
-  limit_train_batches: 100  # 640
-  # accumulate_grad_batches: 8
+  limit_train_batches: 100
   callbacks:
-    - _target_: pytorch_lightning.callbacks.LearningRateMonitor
-    - _target_: pytorch_lightning.callbacks.ModelCheckpoint
-      monitor: val_mse
-      save_last: true
-      save_top_k: 3
-      filename: '{val_mse:.5f}-{epoch:03d}'
-
+  - _target_: pytorch_lightning.callbacks.LearningRateMonitor
+  - _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: val_mse
+    save_last: true
+    save_top_k: 3
+    filename: '{val_mse:.5f}-{epoch:03d}'
 datamodule:
   _target_: contrib.glorys12.DistinctNormDataModule
   input_da:
@@ -44,24 +54,43 @@ datamodule:
     inp_var: sla
   domains:
     train:
-      time: {_target_: builtins.slice, _args_: ['2010-01-01', '2018-11-30']}
+      time:
+        _target_: builtins.slice
+        _args_:
+        - '2010-01-01'
+        - '2018-11-30'
     val:
-      time: {_target_: builtins.slice, _args_: ['2019-01-01', '2019-12-31']}
+      time:
+        _target_: builtins.slice
+        _args_:
+        - '2019-01-01'
+        - '2019-12-31'
     test: null
   xrds_kw:
     train:
-      # patch_dims: {time: 15, lat: 232, lon: 366}
-      # strides: {time: 1, lat: 224, lon: 358}
-      patch_dims: {time: 15, lat: 680, lon: 1440}
-      strides: {time: 1, lat: 672, lon: 1432}
+      patch_dims:
+        time: 15
+        lat: 680
+        lon: 1440
+      strides:
+        time: 1
+        lat: 672
+        lon: 1432
       domain_limits: ${domain.train}
     val:
-      patch_dims: {time: 15, lat: 680, lon: 1440}
-      strides: {time: 1, lat: 672, lon: 1432}
-      # strides: {time: 1, lat: 1, lon: 1}
+      patch_dims:
+        time: 15
+        lat: 680
+        lon: 1440
+      strides:
+        time: 1
+        lat: 672
+        lon: 1432
       domain_limits: ${domain.train}
-  dl_kw: {batch_size: 1, num_workers: 2}
-  norm_stats:  # norm values from tgt
+  dl_kw:
+    batch_size: 1
+    num_workers: 2
+  norm_stats:
     train:
     - -0.001930378327255099
     - 0.08604745118775728
@@ -70,7 +99,6 @@ datamodule:
     # - 0.08583080433051968
     - -0.001930378327255099
     - 0.08604745118775728
-
 model:
   _target_: contrib.unet.models.Unet
   solver:
@@ -95,15 +123,11 @@ model:
         lat: ${domain.test.lat}
         lon: ${domain.test.lon}
   norm_stats: ${datamodule.norm_stats}
-
 entrypoints:
-  - _target_: pytorch_lightning.seed_everything
-    seed: 333
-  - _target_: ocean4dvarnet.train.base_training
-    trainer: ${trainer}
-    lit_mod: ${model}
-    dm: ${datamodule}
-
-defaults:
-  - /domain: glorys
-  - _self_
+- _target_: pytorch_lightning.seed_everything
+  seed: 333
+- _target_: contrib.glorys12.train
+  trainer: ${trainer}
+  lit_mod: ${model}
+  dm: ${datamodule}
+  ckpt: ${ckpt}

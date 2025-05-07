@@ -9,7 +9,7 @@ hydra:
 
 domain: ???
 ckpt: null
-xpname: glo12-sla-unet
+xpname: glo12-sla-unet-31days
 
 trainer:
   _target_: pytorch_lightning.Trainer
@@ -52,11 +52,11 @@ datamodule:
     train:
       # patch_dims: {time: 15, lat: 232, lon: 366}
       # strides: {time: 1, lat: 224, lon: 358}
-      patch_dims: {time: 15, lat: 680, lon: 1440}
+      patch_dims: {time: 31, lat: 680, lon: 1440}
       strides: {time: 1, lat: 672, lon: 1432}
       domain_limits: ${domain.train}
     val:
-      patch_dims: {time: 15, lat: 680, lon: 1440}
+      patch_dims: {time: 31, lat: 680, lon: 1440}
       strides: {time: 1, lat: 672, lon: 1432}
       # strides: {time: 1, lat: 1, lon: 1}
       domain_limits: ${domain.train}
