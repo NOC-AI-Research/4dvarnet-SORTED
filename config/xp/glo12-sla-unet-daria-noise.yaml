@@ -1,0 +1,14 @@
+# @package _global_
+
+xpname: glo12-sla-unet-daria-noise
+
+datamodule:
+  xrds_kw:
+    train:
+      noise: .03
+    val:
+      noise: .03
+
+defaults:
+  - glo12-sla-unet-daria
+  - _self_
