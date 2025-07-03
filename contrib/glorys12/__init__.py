@@ -297,7 +297,7 @@ def load_glorys12_data(tgt_path, inp_path, tgt_var="zos", inp_var="input"):
     tgt = (
         xr.open_dataset(tgt_path)[tgt_var]
         .isel(isel)
-        .sel(latitude=slice(-80, 82 - 0.125))
+        # .sel(latitude=slice(-80, 82 - 0.125))
     )
     inp = xr.open_dataset(inp_path)[inp_var].isel(isel)
 
