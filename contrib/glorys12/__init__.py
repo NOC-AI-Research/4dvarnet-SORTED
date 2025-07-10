@@ -292,14 +292,12 @@ class Lit4dVarNetIgnoreNaN(Lit4dVarNet):
 
 def load_glorys12_data(tgt_path, inp_path, tgt_var="zos", inp_var="input"):
     isel = None  # dict(time=slice(-465, -265))
-    # sel = dict(longitude=slice(-66, -54), latitude=slice(32, 44))
 
     _start = time.time()
 
     tgt = (
         xr.open_dataset(tgt_path)[tgt_var]
         .isel(isel)
-        # .sel(sel)
     )
     inp = xr.open_dataset(inp_path)[inp_var].isel(isel)
 
@@ -323,19 +321,16 @@ def load_glorys12_data_on_fly_inp(
     inp_var="input",
 ):
     isel = None  # dict(time=slice(-365 * 2, None))
-    # sel = dict(longitude=slice(-66, -54), latitude=slice(32, 44))
 
     tgt = (
         xr.open_dataset(tgt_path)[tgt_var]
         .isel(isel)
-        # .sel(sel)
         .rename(latitude="lat", longitude="lon")
     )
 
     inp = (
         xr.open_dataset(inp_path)[inp_var]
         .isel(isel)
-        # .sel(sel)
         .rename(latitude="lat", longitude="lon")
     )
 
