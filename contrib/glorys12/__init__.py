@@ -110,7 +110,8 @@ class LazyXrDataset(torch.utils.data.Dataset):
         }
         self._rng = np.random.default_rng()
         self.noise = noise
-        self.mask = kwargs.get("mask")
+        # self.mask = kwargs.get("mask")
+        self.mask = None
 
     def __len__(self):
         size = 1
@@ -291,13 +292,14 @@ class Lit4dVarNetIgnoreNaN(Lit4dVarNet):
 
 def load_glorys12_data(tgt_path, inp_path, tgt_var="zos", inp_var="input"):
     isel = None  # dict(time=slice(-465, -265))
+    # sel = dict(longitude=slice(-66, -54), latitude=slice(32, 44))
 
     _start = time.time()
 
     tgt = (
         xr.open_dataset(tgt_path)[tgt_var]
         .isel(isel)
-        # .sel(latitude=slice(-80, 82 - 0.125))
+        # .sel(sel)
     )
     inp = xr.open_dataset(inp_path)[inp_var].isel(isel)
 
@@ -321,16 +323,19 @@ def load_glorys12_data_on_fly_inp(
     inp_var="input",
 ):
     isel = None  # dict(time=slice(-365 * 2, None))
+    # sel = dict(longitude=slice(-66, -54), latitude=slice(32, 44))
 
     tgt = (
         xr.open_dataset(tgt_path)[tgt_var]
         .isel(isel)
+        # .sel(sel)
         .rename(latitude="lat", longitude="lon")
     )
 
     inp = (
         xr.open_dataset(inp_path)[inp_var]
         .isel(isel)
+        # .sel(sel)
         .rename(latitude="lat", longitude="lon")
     )
 
