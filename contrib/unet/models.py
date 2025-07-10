@@ -273,7 +273,7 @@ class UnetSolver(torch.nn.Module):
             return x
 
 
-class UnetDaria(pl.LightningModule):
+class UnetBig(pl.LightningModule):
     def __init__(
         self,
         solver,
@@ -402,11 +402,11 @@ class UnetDaria(pl.LightningModule):
             self.logger.log_metrics(metrics.to_dict())
 
 
-class UnetSolverDaria(torch.nn.Module):
+class UnetSolverBig(torch.nn.Module):
     def __init__(
         self, n_channels=1, n_classes=1, bilinear=True, block=ResBlock, add_input=False
     ):
-        super(UnetSolverDaria, self).__init__()
+        super(UnetSolverBig, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.add_input = add_input

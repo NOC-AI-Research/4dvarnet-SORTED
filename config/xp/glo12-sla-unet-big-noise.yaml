@@ -1,6 +1,6 @@
 # @package _global_
 
-xpname: glo12-sla-unet-daria-noise
+xpname: glo12-sla-unet-big-noise
 
 datamodule:
   xrds_kw:
@@ -10,5 +10,5 @@ datamodule:
       noise: .03
 
 defaults:
-  - glo12-sla-unet-daria
+  - glo12-sla-unet-big
   - _self_

@@ -9,7 +9,7 @@ hydra:
 
 domain: ???
 ckpt: null
-xpname: glo12-sla-unet-daria
+xpname: glo12-sla-unet-big
 
 trainer:
   _target_: pytorch_lightning.Trainer
@@ -72,9 +72,9 @@ datamodule:
     - 0.08604745118775728
 
 model:
-  _target_: contrib.unet.models.UnetDaria
+  _target_: contrib.unet.models.UnetBig
   solver:
-    _target_: contrib.unet.models.UnetSolverDaria
+    _target_: contrib.unet.models.UnetSolverBig
     _partial_: True
     n_channels: 15
     n_classes: 15

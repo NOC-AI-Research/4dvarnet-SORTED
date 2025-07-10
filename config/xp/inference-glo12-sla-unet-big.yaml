@@ -22,7 +22,7 @@ domain:
       - -179
       - 179
 ckpt: null
-xpname: glo12-sla-unet-daria
+xpname: glo12-sla-unet-big
 trainer:
   _target_: pytorch_lightning.Trainer
   inference_mode: false
@@ -70,22 +70,22 @@ datamodule:
     train:
       patch_dims:
         time: 15
-        lat: 1360
-        lon: 2880
+        lat: 680
+        lon: 1440
       strides:
         time: 1
-        lat: 1344
-        lon: 2864
+        lat: 672
+        lon: 1432
       domain_limits: ${domain.train}
     val:
       patch_dims:
         time: 15
-        lat: 1360
-        lon: 2880
+        lat: 680
+        lon: 1440
       strides:
         time: 1
-        lat: 1344
-        lon: 2864
+        lat: 672
+        lon: 1432
       domain_limits: ${domain.train}
   dl_kw:
     batch_size: 1
@@ -100,9 +100,9 @@ datamodule:
     - -0.001930378327255099
     - 0.08604745118775728
 model:
-  _target_: contrib.unet.models.UnetDaria
+  _target_: contrib.unet.models.UnetBig
   solver:
-    _target_: contrib.unet.models.UnetSolverDaria
+    _target_: contrib.unet.models.UnetSolverBig
     _partial_: True
     n_channels: 15
     n_classes: 15
