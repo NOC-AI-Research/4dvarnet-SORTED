@@ -22,7 +22,7 @@ domain:
       - -179
       - 179
 ckpt: null
-xpname: glo12-sla
+xpname: glo12-sla-unet-big
 trainer:
   _target_: pytorch_lightning.Trainer
   inference_mode: false
@@ -70,71 +70,62 @@ datamodule:
     train:
       patch_dims:
         time: 15
-        lat: 232
-        lon: 366
+        lat: 1360
+        lon: 2880
       strides:
         time: 1
-        lat: 224
-        lon: 358
+        lat: 1344
+        lon: 2864
       domain_limits: ${domain.train}
     val:
       patch_dims:
         time: 15
-        lat: 680
-        lon: 1440
+        lat: 1360
+        lon: 2880
       strides:
         time: 1
-        lat: 1
-        lon: 1
+        lat: 1344
+        lon: 2864
       domain_limits: ${domain.train}
   dl_kw:
-    batch_size: 16
-    num_workers: 1
+    batch_size: 1
+    num_workers: 2
   norm_stats:
     train:
     - -0.001930378327255099
     - 0.08604745118775728
     val:
-    - 0.01560162689028551
-    - 0.08583080433051968
+    # - 0.01560162689028551
+    # - 0.08583080433051968
+    - -0.001930378327255099
+    - 0.08604745118775728
 model:
-  _target_: contrib.glorys12.Lit4dVarNetIgnoreNaN
-  persist_rw: false
+  _target_: contrib.unet.models.UnetBig
+  solver:
+    _target_: contrib.unet.models.UnetSolverBig
+    _partial_: True
+    n_channels: 15
+    n_classes: 15
+    bilinear: True
+    block:
+      _target_: contrib.unet.parts.StandardBlock
+      _partial_: True
+    add_input: False
   opt_fn:
-    _target_: ocean4dvarnet.utils.cosanneal_lr_adam
+    _target_: contrib.unet.utils.cosanneal_lr_adam
     _partial_: true
-    lr: 0.0001
+    lr: 1e-4 #lowered from 1e-3
     T_max: ${trainer.max_epochs}
   rec_weight:
     _target_: ocean4dvarnet.utils.get_triang_time_wei
     patch_dims: ${datamodule.xrds_kw.train.patch_dims}
-    crop:
-      time: 0
-      lat: 4
-      lon: 4
-  val_rec_weight:
-    _target_: ocean4dvarnet.utils.get_triang_time_wei
-    patch_dims: ${datamodule.xrds_kw.val.patch_dims}
-    crop:
-      time: 0
-      lat: 4
-      lon: 4
-  solver:
-    _target_: ocean4dvarnet.models.GradSolver
-    n_step: 15
-    lr_grad: 1000.0
-    prior_cost:
-      _target_: ocean4dvarnet.models.BilinAEPriorCost
-      dim_in: ${datamodule.xrds_kw.train.patch_dims.time}
-      dim_hidden: 64
-      bilin_quad: false
-      downsamp: 2
-    obs_cost:
-      _target_: ocean4dvarnet.models.BaseObsCost
-    grad_mod:
-      _target_: ocean4dvarnet.models.ConvLstmGradModel
-      dim_in: ${datamodule.xrds_kw.train.patch_dims.time}
-      dim_hidden: 96
+    crop: {time: 0, lat: 4, lon: 4}
+  pre_metric_fn:
+        _target_: xarray.Dataset.sel
+        _partial_: True
+        time: {_target_: builtins.slice, _args_: ["2019-11-25", "2019-12-31"]}
+        lat: ${domain.test.lat}
+        ltorch.nan_to_num(x)on: ${domain.test.lon}
   norm_stats: ${datamodule.norm_stats}
 entrypoints:
 - _target_: pytorch_lightning.seed_everything

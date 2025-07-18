@@ -49,7 +49,6 @@ class LitModel(pl.LightningModule):
     def predict_step(self, batch, batch_idx: int, *args, **kwargs):
         if batch_idx == 0:
             self.predict_data = []
-
         outputs = self.solver(batch)
 
         self.bs = self.bs or outputs.shape[0]
