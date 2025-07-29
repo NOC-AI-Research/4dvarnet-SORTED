@@ -10,8 +10,13 @@ from pytorch_lightning import (
     Trainer,
 )
 from torch import nn
+from torchvision.transforms import v2
 from torch.utils.data import DataLoader
 
+ds_path = "/noc/users/joncon/SORTED/4dvarnet-SORTED/"
+#ds_path = "/home/joncon/SORTED/"
+log_path = "/noc/users/joncon/SORTED/4dvarnet-SORTED/logging/"+ time.strftime("%Y%m%d_%H%M%S", time.gmtime())+ "/"
+#log_path = "~/SORTED/4dvarnet/ocean4dvarnet/logging/"+ time.strftime("%Y%m%d_%H%M%S", time.gmtime())+ "/"
 
 class XrDataset(torch.utils.data.Dataset):
     def __init__(
@@ -27,6 +32,7 @@ class XrDataset(torch.utils.data.Dataset):
             )
         },
         patch_dims=None,
+        transform=None
     ):
         self.inp_da = inp_da.sel(slice)
         self.tgt_da = tgt_da.sel(slice)
@@ -50,6 +56,7 @@ class XrDataset(torch.utils.data.Dataset):
 
         for i in np.ndindex(tuple(self.patches_per_dim.values())):
             self.indices.append(i)
+        self.transform=transform
 
     def __len__(self):
         size = 1
@@ -70,8 +77,11 @@ class XrDataset(torch.utils.data.Dataset):
             )
 
             i = i + 1
-
-        return self.inp_da.isel(patches).to_numpy(), self.tgt_da.isel(
+        if self.transform:
+            inp_t= self.transform(self.inp_da.isel(patches).to_numpy())
+        else:
+            inp_t= self.inp_da.isel(patches).to_numpy()
+        return inp_t, self.tgt_da.isel(
             patches
         ).to_numpy()
 
@@ -103,6 +113,7 @@ class XrDataModule(LightningDataModule):
         num_workers: int = 1,
         pin_memory: bool = True,
         batch_size: int = 4,
+        transforms=None
     ):
         super().__init__()
 
@@ -128,29 +139,42 @@ class XrDataModule(LightningDataModule):
             self.vpatch_dims = tpatch_dims
         else:
             self.vpatch_dims = vpatch_dims
+        self.transforms=transforms
+
 
     def train_dataloader(self):
         """Load the training dataset."""
+        self.transforms =v2.Compose([
+          v2.ToDtype(torch.float32, scale=True),  
+v2.Normalize(mean=[0.],std=[1.])
+            ])
         dataloader = DataLoader(
             XrDataset(
                 self.inp_da,
                 self.tgt_da,
                 self.tslice,
                 self.tpatch_dims,
+                self.transforms
             ),
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            
         )
         return dataloader
 
     def val_dataloader(self):
         """Load the training dataset."""
+        self.transforms =v2.Compose([
+          v2.ToDtype(torch.float32, scale=True),  
+v2.Normalize(mean=[0.],std=[1.])
+        ])
         dataloader = DataLoader(
             XrDataset(
                 self.inp_da,
                 self.tgt_da,
                 self.vslice,
                 self.vpatch_dims,
+                self.transforms
             ),
             batch_size=self.batch_size,
             num_workers=self.num_workers,
@@ -158,8 +182,8 @@ class XrDataModule(LightningDataModule):
         return dataloader
 
 
-inp = xr.open_dataset("/home/joncon/SORTED/ARGO_gridded_20182024_3D.nc")["TEMPERATURE"]
-tgt = xr.open_dataset("/home/joncon/SORTED/RG_ARGO_NA_20042024_3D.nc")["TEMPERATURE"]
+inp = xr.open_dataset(ds_path+"ARGO_gridded_20182024_3D.nc")["TEMPERATURE"]
+tgt = xr.open_dataset(ds_path+"RG_ARGO_NA_20042024_3D.nc")["TEMPERATURE"]
 
 
 datamodule = XrDataModule(
@@ -194,9 +218,7 @@ class Encode(nn.Module):
         super().__init__()
         self.Prior_Cost = nn.Sequential(
             nn.Conv3d(12, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
-            nn.ReLU(),
             nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
-            nn.ReLU(),
             nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
             nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
@@ -219,6 +241,7 @@ class ConvGradModel(nn.Module):
             nn.Conv3d(12, 268, kernel_size=(1, 1, 1)),
             nn.ReLU(),
             nn.Conv3d(268, 1024, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            
             nn.ReLU(),
             nn.Conv3d(1024, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.Conv3d(256, 12, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
@@ -234,13 +257,13 @@ class ConvGradModel(nn.Module):
 class FourDVarNet(L.LightningModule):
     def __init__(self, encoder, decoder):
         super().__init__()
+        self.automatic_optimization = True
         self.encoder = encoder
         self.decoder = decoder
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
         x, _ = batch
-        # x = x.view(x.size(0), -1)
         z = self.encoder(x)
         x_hat = self.decoder(z)
         loss = F.mse_loss(x_hat, x)
@@ -249,7 +272,7 @@ class FourDVarNet(L.LightningModule):
             loss,
             prog_bar=True,
             on_step=False,
-            on_epoch=True,  # sync_dist=True,
+            on_epoch=True,  sync_dist=True,
         )
         return loss
 
@@ -263,7 +286,7 @@ class FourDVarNet(L.LightningModule):
             loss,
             prog_bar=True,
             on_step=False,
-            on_epoch=True,  # sync_dist=True,
+            on_epoch=True,  sync_dist=True,
         )
         return loss
 
@@ -276,15 +299,21 @@ model = FourDVarNet(Encode(), ConvGradModel())
 
 
 es = L.callbacks.early_stopping.EarlyStopping(
-    monitor="val_loss", mode="min", patience=3
+    monitor="val_loss", mode="min", patience=10
+)
+
+ckpt_cb = L.callbacks.ModelCheckpoint(
+    monitor='val_loss',
+dirpath=log_path,
+    filename='4dvarnet-{epoch:02d}-{val_loss:.2f}',
+    save_top_k=3
 )
 
 trainer = Trainer(
-    default_root_dir="~/SORTED/4dvarnet/ocean4dvarnet/logging/"
-    + time.strftime("%Y%m%d_%H%M%S", time.gmtime())
-    + "/",
-    callbacks=[es],
+    default_root_dir=log_path,
+    callbacks=[es,ckpt_cb],
     max_epochs=100,
     log_every_n_steps=6,
+    accumulate_grad_batches=2
 )
 trainer.fit(model=model, datamodule=datamodule)
