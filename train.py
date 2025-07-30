@@ -13,10 +13,13 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
-ds_path = "/noc/users/joncon/SORTED/4dvarnet-SORTED/"
+#ds_path = "/noc/users/joncon/SORTED/4dvarnet-SORTED/"
 # ds_path = "/home/joncon/SORTED/"
+ds_path = "/gws/nopw/j04/aria_sorted/jdconey/"
+
 log_path = (
-    "/noc/users/joncon/SORTED/4dvarnet-SORTED/logging/"
+#    "/noc/users/joncon/SORTED/4dvarnet-SORTED/logging/"
+     "/gws/nopw/j04/aria_sorted/jdconey/code/SORTED/ocean4dvarnet/logging/"
     + time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     + "/"
 )
@@ -184,7 +187,7 @@ tgt = xr.open_dataset(ds_path + "RG_ARGO_NA_20042024_3D.nc")["TEMPERATURE"]
 datamodule = XrDataModule(
     inp_da=inp,
     tgt_da=tgt,
-    tpatch_dims={"time": 12, "pres": 14, "lat": 14, "lon": 38},
+    tpatch_dims={"time": 6, "pres": 14, "lat": 14, "lon": 38},
     tslice={
         "time": np.arange(
             np.datetime64("2018-01-01"),
@@ -212,7 +215,8 @@ class Encode(nn.Module):
     def __init__(self):
         super().__init__()
         self.Prior_Cost = nn.Sequential(
-            nn.Conv3d(12, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            nn.Conv3d(6, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            nn.BatchNorm3d(256),
             nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
@@ -236,8 +240,9 @@ class ConvGradModel(nn.Module):
             nn.Conv3d(12, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.Conv3d(256, 1024, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
+            nn.BatchNorm3d(1024),
             nn.Conv3d(1024, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
-            nn.Conv3d(256, 12, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            nn.Conv3d(256, 6, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
             nn.Dropout(p=0.1, inplace=False),
             nn.Identity(),
@@ -253,6 +258,7 @@ class FlatLSTM(L.LightningModule):
         self.LSTM_mod = nn.Sequential(
             nn.Conv3d(12, 12, kernel_size=(1, 1, 1)),
             nn.ReLU(),
+            nn.BatchNorm3d(12),
             nn.Flatten(2, 4),
             nn.LSTM(7448, 7448),
         )
@@ -319,7 +325,7 @@ model = FourDVarNet(Encode(), FlatLSTM(), ConvGradModel())
 
 
 es = L.callbacks.early_stopping.EarlyStopping(
-    monitor="val_loss", mode="min", patience=10
+    monitor="val_loss", mode="min", patience=200
 )
 
 ckpt_cb = L.callbacks.ModelCheckpoint(
@@ -332,7 +338,7 @@ ckpt_cb = L.callbacks.ModelCheckpoint(
 trainer = Trainer(
     default_root_dir=log_path,
     callbacks=[es, ckpt_cb],
-    max_epochs=100,
+    max_epochs=10000,
     log_every_n_steps=6,
     accumulate_grad_batches=2,
 )
