@@ -36,7 +36,7 @@ class XrDataset(torch.utils.data.Dataset):
         inp_da,
         tgt_da,
         slice={
-            "time": np.arange(
+            "time_counter": np.arange(
                 np.datetime64("2018-01-01"),
                 np.datetime64("2024-01-01"),
                 np.timedelta64(1, "M"),
@@ -46,8 +46,8 @@ class XrDataset(torch.utils.data.Dataset):
         patch_dims=None,
         transform=None,
     ):
-        self.inp_da = inp_da.sel(slice)
-        self.tgt_da = tgt_da.sel(slice)
+        self.inp_da = inp_da.sel(slice,method='nearest',tolerance=np.timedelta64(3,"D"))
+        self.tgt_da = tgt_da.sel(slice,method='nearest',tolerance=np.timedelta64(3,"D"))
         if patch_dims is None:
             self.patch_dims = {}
             for dim in self.inp_da:
@@ -90,9 +90,18 @@ class XrDataset(torch.utils.data.Dataset):
 
             i = i + 1
         if self.transform:
-            inp_t = self.transform(self.inp_da.isel(patches).to_numpy())
+            inp_t = self.transform(self.inp_da.isel(patches,method='nearest',tolerance=np.timedelta64(3,"D")).to_numpy())
         else:
-            inp_t = self.inp_da.isel(patches).to_numpy()
+            inp_t = self.inp_da.isel(patches,method='nearest',tolerance=np.timedelta64(3,"D")).to_numpy()
+
+        a = np.zeros_like(inp_t.flatten(), dtype=int)
+        prob=np.random.random_sample()
+        a[:int(prob*len(a))] = 1
+        a = np.random.shuffle(a)
+        a = a.astype(bool)
+        a =  a.reshape(inp_t.shape)
+        inp_t = inp_t*a
+        inp_t = inp_t[np.isfinite(inp_t,inp_t,0)]
         return inp_t, self.tgt_da.isel(patches).to_numpy()
 
 
@@ -180,26 +189,41 @@ class XrDataModule(LightningDataModule):
         return dataloader
 
 
-inp = xr.open_dataset(ds_path + "ARGO_gridded_20182024_3D.nc")["TEMPERATURE"]
-tgt = xr.open_dataset(ds_path + "RG_ARGO_NA_20042024_3D.nc")["TEMPERATURE"]
+#inp = xr.open_dataset(ds_path + "ARGO_gridded_20182024_3D.nc")["TEMPERATURE"]
+#tgt = xr.open_dataset(ds_path + "RG_ARGO_NA_20042024_3D.nc")["TEMPERATURE"]
+inp = xr.open_dataarray(ds_path + "NEMO_thetao_1976-2024.nc")[:,:72,:212,:306]
+tgt = xr.open_dataarray(ds_path + "NEMO_thetao_1976-2024.nc")[:,:72,:212,:306]
 
+ts = []
+for val in inp["time_counter"]:
+    val = val.values
+    ts.append(val - np.timedelta64(14,'D'))
+inp['time_counter'] = np.array(ts)
+
+ts = []
+for val in tgt["time_counter"]:
+    val = val.values
+    ts.append(val - np.timedelta64(14,'D'))
+tgt['time_counter'] = np.array(ts)
+
+print(tgt['time_counter'])
 
 datamodule = XrDataModule(
     inp_da=inp,
     tgt_da=tgt,
-    tpatch_dims={"time": 6, "pres": 14, "lat": 14, "lon": 38},
+    tpatch_dims={"time_counter": 12, "deptht": 36, "y": 106, "x": 102},
     tslice={
         "time": np.arange(
-            np.datetime64("2018-01-01"),
-            np.datetime64("2024-01-01"),
+            np.datetime64("1976-01-01"),
+            np.datetime64("2013-01-01"),
             np.timedelta64(1, "M"),
             dtype="datetime64[M]",
         )
     },
     vslice={
-        "time": np.arange(
-            np.datetime64("2024-01-01"),
-            np.datetime64("2025-01-01"),
+        "time_counter": np.arange(
+            np.datetime64("2013-01-01"),
+            np.datetime64("2019-01-01"),
             np.timedelta64(1, "M"),
             dtype="datetime64[M]",
         )
