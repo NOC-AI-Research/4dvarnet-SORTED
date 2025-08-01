@@ -90,18 +90,22 @@ class XrDataset(torch.utils.data.Dataset):
 
             i = i + 1
         if self.transform:
-            inp_t = self.transform(self.inp_da.isel(patches,method='nearest',tolerance=np.timedelta64(3,"D")).to_numpy())
+            inp_t = self.transform(self.inp_da.isel(patches).to_numpy())
         else:
-            inp_t = self.inp_da.isel(patches,method='nearest',tolerance=np.timedelta64(3,"D")).to_numpy()
+            inp_t = self.inp_da.isel(patches).to_numpy()
 
         a = np.zeros_like(inp_t.flatten(), dtype=int)
-        prob=np.random.random_sample()
-        a[:int(prob*len(a))] = 1
-        a = np.random.shuffle(a)
-        a = a.astype(bool)
-        a =  a.reshape(inp_t.shape)
-        inp_t = inp_t*a
-        inp_t = inp_t[np.isfinite(inp_t,inp_t,0)]
+
+        prob = np.random.random_sample()
+        prob_val = int(prob * len(a))
+        a[:prob_val] = 1
+        np.random.shuffle(a)
+        # a = a.astype(bool)
+        a = a.reshape(inp_t.shape)
+        inp_t = inp_t * a
+        inp_t = np.where(np.isfinite(inp_t), inp_t, 0.0).astype(np.float32)
+
+
         return inp_t, self.tgt_da.isel(patches).to_numpy()
 
 
@@ -211,9 +215,9 @@ print(tgt['time_counter'])
 datamodule = XrDataModule(
     inp_da=inp,
     tgt_da=tgt,
-    tpatch_dims={"time_counter": 12, "deptht": 36, "y": 106, "x": 102},
+    tpatch_dims={"time_counter": 6, "deptht": 18, "y": 106, "x": 102},
     tslice={
-        "time": np.arange(
+        "time_counter": np.arange(
             np.datetime64("1976-01-01"),
             np.datetime64("2013-01-01"),
             np.timedelta64(1, "M"),
@@ -248,7 +252,7 @@ class Encode(nn.Module):
             nn.ReLU(),
             nn.Conv3d(256, 512, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
-            nn.Conv3d(512, 12, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            nn.Conv3d(512, 6, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.AvgPool3d(kernel_size=2, stride=2, padding=0),
             nn.Upsample(scale_factor=2, mode="trilinear"),
         )
@@ -261,7 +265,7 @@ class ConvGradModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.ConvNet = nn.Sequential(
-            nn.Conv3d(12, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
+            nn.Conv3d(6, 256, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.Conv3d(256, 1024, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)),
             nn.ReLU(),
             nn.BatchNorm3d(1024),
@@ -280,18 +284,23 @@ class FlatLSTM(L.LightningModule):
     def __init__(self):
         super().__init__()
         self.LSTM_mod = nn.Sequential(
-            nn.Conv3d(12, 12, kernel_size=(1, 1, 1)),
+            nn.Conv3d(6, 6, kernel_size=(1, 1, 1)),
             nn.ReLU(),
-            nn.BatchNorm3d(12),
+            nn.BatchNorm3d(6),
+            nn.MaxPool3d(kernel_size=(3,5,5),stride=(3,5,5),padding=(0,0,0),dilation=(1,2,2)),
             nn.Flatten(2, 4),
-            nn.LSTM(7448, 7448),
+            nn.LSTM(1600, 1600),
         )
 
     def forward(self, x):
         seq_out = self.LSTM_mod(x)[0]
-        # print(seq_out.shape)
+#        print(seq_out.shape)
         batch_size = seq_out.shape[0]
-        return torch.reshape(seq_out, (batch_size, 12, 14, 14, 38))
+
+        oot = torch.reshape(seq_out, (batch_size, 6, 4, 20, 20))
+        oot2 = nn.ConvTranspose3d(in_channels=6, out_channels=6, 
+                kernel_size=(5,9,9), stride=(3,3,3), padding=(0,0,2),dilation=(2,6,6))
+        return oot2(oot)
 
 
 class FourDVarNet(L.LightningModule):
